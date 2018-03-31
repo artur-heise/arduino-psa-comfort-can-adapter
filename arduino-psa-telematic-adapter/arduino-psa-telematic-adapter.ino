@@ -332,6 +332,8 @@ void loop() {
                 canMsg[7] = 0x00;
                 CAN1.sendMsgBuf(0x350, 0, 8, canMsg);
             } else if (id == 246 && len == 8) {
+                // I could have chosen any other recurring CAN message like ID 54 to send recurring CAN messages the old BSI is not sending, it saves us some work to do with time :)
+
                 // If time is synced
                 if (timeStatus() != timeNotSet) {
                     canMsg[0] = (year() - 1872); // Year would not fit inside one byte (0 > 255), substract 1872 and you get this new range (1872 > 2127)
