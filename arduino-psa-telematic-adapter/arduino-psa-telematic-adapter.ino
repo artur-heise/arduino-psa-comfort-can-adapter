@@ -177,7 +177,7 @@ void loop() {
 
                 CAN1.sendMsgBuf(0x036, 0, 8, buffer);
             } else if (id == 182 && len == 8) {
-                if (buffer[0] > 0x00 || buffer[1] > 0x00) {
+                if (buffer[0] > 0x00 || buffer[1] > 0x00) { // Seems to be engine RPM, 0x00 0x00 when the engine is OFF
                     EngineRunning = true;
                 } else {
                     EngineRunning = false;
@@ -188,7 +188,9 @@ void loop() {
                 if (LeftTemp == RightTemp) { // No other way to detect MONO mode
                     Mono = true;
                     LeftTemp = LeftTemp + 64;
-                }
+                } else {
+					Mono = false;
+				}
 
                 FanOff = false;
                 // Fan Speed BSI_2010 = "41" (Off) > "49" (Full speed)
@@ -320,6 +322,7 @@ void loop() {
                 } else {
                     canMsg[0] = 0x09; // A/C OFF - Auto Soft : "08" / Auto Normal "09" / Auto Fast "0A"
                 }
+				
                 canMsg[1] = 0x00;
                 canMsg[2] = 0x00;
                 canMsg[3] = LeftTemp;
@@ -368,7 +371,6 @@ void loop() {
                     CAN1.sendMsgBuf(0x350, 0, 8, canMsg);
                 }
 
-
                 // Lang / Temp / Aid options
                 canMsg[0] = languageNum;
 
@@ -381,11 +383,15 @@ void loop() {
                     canMsg[1] = canMsg[1] + 128;
                 }
 
+				// I still have some investigation work to do here, it is the settings of interior ambience, and so on
+				// **************************
                 canMsg[2] = 0x97;
                 canMsg[3] = 0x9B;
                 canMsg[4] = 0xE0;
                 canMsg[5] = 0xD0;
                 canMsg[6] = 0x00;
+				// **************************
+				
                 CAN1.sendMsgBuf(0x260, 0, 7, canMsg);
 
                 // Economy mode simulation
@@ -598,7 +604,7 @@ void loop() {
                 tmpVal = (buffer[0] & 0xFF);
                 buffer[0] = ((tmpVal - 32) / 4) + 57; // Converted value
 
-                buffer[3] = 63; // ?? 0x3F = 63 (seems 0 default setting)
+                buffer[3] = 63; // ?? 0x3F = 63 (seems 0 default setting of something)
 
                 CAN0.sendMsgBuf(id, 0, len, buffer);
             } else {
