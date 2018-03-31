@@ -189,8 +189,8 @@ void loop() {
                     Mono = true;
                     LeftTemp = LeftTemp + 64;
                 } else {
-					Mono = false;
-				}
+                    Mono = false;
+                }
 
                 FanOff = false;
                 // Fan Speed BSI_2010 = "41" (Off) > "49" (Full speed)
