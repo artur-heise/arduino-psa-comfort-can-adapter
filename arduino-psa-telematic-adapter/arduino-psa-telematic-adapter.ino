@@ -36,7 +36,7 @@ bool EconomyModeEnabled = true; // You can disable economy mode on the Telematic
 bool TemperatureInF = false; // Default temperature in Celcius
 bool mpgMi = false;
 bool fixedBrightness = false; // Force Brightness value in case the calibration does not match your brightness value range
-bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on wheel commands into MENU
+bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
 int languageNum = 128; // (0x80) FR - If you need EN as default : 132 (0x84)
 int languageID = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
 int languageID_HeadupPanel = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
@@ -194,8 +194,8 @@ void loop() {
 					EngineRunning = false;
 				}
 				CAN1.sendMessage( & canMsgRcv);
-			} else if (id == 543 && len == 3 && noFMUX) { // Wheel commands
-				// Replace SRC by MENU (Ex: 208, C-Elysee calibrations)
+			} else if (id == 543 && len == 3 && noFMUX) { // Steering wheel commands
+				// Replace SRC by MENU (Valid for 208, C-Elysee calibrations for example)
 
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 
