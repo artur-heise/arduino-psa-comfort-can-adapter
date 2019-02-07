@@ -2,6 +2,7 @@
 //    Libraries    //
 /////////////////////
 
+#include <EEPROM.h>
 #include <SPI.h>
 #include <Time.h>
 #include <TimeLib.h>
@@ -37,14 +38,14 @@ bool TemperatureInF = false; // Default temperature in Celcius
 bool mpgMi = false;
 bool fixedBrightness = false; // Force Brightness value in case the calibration does not match your brightness value range
 bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
-int languageNum = 128; // (0x80) FR - If you need EN as default : 132 (0x84)
-int languageID = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
-int languageID_HeadupPanel = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
-int TelematicTime_day = 1; // Default day if the RTC module is not configured
-int TelematicTime_month = 1; // Default month if the RTC module is not configured
+byte languageNum = 128; // (0x80) FR - If you need EN as default : 132 (0x84)
+byte languageID = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
+byte languageID_HeadupPanel = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
+byte TelematicTime_day = 1; // Default day if the RTC module is not configured
+byte TelematicTime_month = 1; // Default month if the RTC module is not configured
 int TelematicTime_year = 2019; // Default year if the RTC module is not configured
-int TelematicTime_hour = 0; // Default hour if the RTC module is not configured
-int TelematicTime_minute = 0; // Default minute if the RTC module is not configured
+byte TelematicTime_hour = 0; // Default hour if the RTC module is not configured
+byte TelematicTime_minute = 0; // Default minute if the RTC module is not configured
 
 // Default variables
 bool SerialEnabled = false;
@@ -52,27 +53,70 @@ int temperature = 0;
 bool EconomyMode = false;
 bool EngineRunning = false;
 bool AirConditioningON = false;
-int FanSpeed = 0;
+byte FanSpeed = 0;
 bool FanOff = false;
 bool AirRecycle = false;
 bool DeMist = false;
 bool DeFrost = false;
-int LeftTemp = 0;
-int RightTemp = 0;
+byte LeftTemp = 0;
+byte RightTemp = 0;
 bool Mono = false;
 bool FootAerator = false;
 bool WindShieldAerator = false;
 bool CentralAerator = false;
 bool AutoFan = false;
-int FanPosition = 0;
+byte FanPosition = 0;
 
 // CAN-BUS Messages
 struct can_frame canMsgSnd;
 struct can_frame canMsgRcv;
 
 void setup() {
+	int tmpVal;
+
 	if (debugCAN0 || debugCAN1 || debugGeneral) {
 		SerialEnabled = true;
+	}
+
+	// Read data from EEPROM
+	tmpVal = EEPROM.read(0);
+	if (tmpVal >= 128 && (tmpVal % 2) == 0) {
+		languageNum = tmpVal;
+	}
+
+	tmpVal = EEPROM.read(1);
+	if (tmpVal <= 32) {
+		languageID_HeadupPanel = tmpVal;
+	}
+
+	tmpVal = EEPROM.read(2);
+	if (tmpVal <= 32) {
+		languageID = tmpVal;
+	}
+
+	tmpVal = EEPROM.read(3);
+	if (tmpVal == 1) {
+		TemperatureInF = true;
+	}
+
+	tmpVal = EEPROM.read(4);
+	if (tmpVal == 1) {
+		mpgMi = true;
+	}
+
+	tmpVal = EEPROM.read(5);
+	if (tmpVal <= 31) {
+		TelematicTime_day = tmpVal;
+	}
+
+	tmpVal = EEPROM.read(6);
+	if (tmpVal <= 12) {
+		TelematicTime_month = tmpVal;
+	}
+
+	EEPROM.get(7, tmpVal); // int
+	if (tmpVal >= 1872 && tmpVal <= 2127) {
+		TelematicTime_year = tmpVal;
 	}
 
 	if (SerialEnabled) {
@@ -108,6 +152,9 @@ void setup() {
 
 		// Set default time (01/01/2019 00:00)
 		setTime(TelematicTime_hour, TelematicTime_minute, 0, TelematicTime_day, TelematicTime_month, TelematicTime_year);
+		EEPROM.update(5, TelematicTime_day);
+		EEPROM.update(6, TelematicTime_month);
+		EEPROM.put(7, TelematicTime_year);
 	} else if (SerialEnabled) {
 		Serial.println("RTC has set the system time");
 	}
@@ -386,16 +433,18 @@ void loop() {
 						Serial.println("°C");
 					}
 				}
-				
+
 				CAN1.sendMessage( & canMsgRcv);
 			} else if (id == 727 && len == 5) { // Headup Panel / Matrix CAN2004
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 
 				if (languageID_HeadupPanel != tmpVal) {
 					languageID_HeadupPanel = tmpVal;
+					EEPROM.update(1, languageID_HeadupPanel);
 
 					// Change language on ID 608 for CAN2010 Telematic language change
 					languageNum = (languageID_HeadupPanel * 4) + 128;
+					EEPROM.update(0, languageNum);
 
 					if (SerialEnabled) {
 						Serial.print("Headup Panel - Change Language: ");
@@ -408,6 +457,8 @@ void loop() {
 
 				if (languageNum != tmpVal) {
 					languageNum = tmpVal;
+					EEPROM.update(0, languageNum);
+
 					if (SerialEnabled) {
 						Serial.print("BSI - Current Language: ");
 						Serial.print(tmpVal);
@@ -418,6 +469,7 @@ void loop() {
 				tmpVal = (canMsgRcv.data[1] & 0xFF);
 				if (tmpVal == 92 && !TemperatureInF) {
 					TemperatureInF = true;
+					EEPROM.update(3, 1);
 
 					if (SerialEnabled) {
 						Serial.print("BSI - Current Temperature Type: Fahrenheit");
@@ -425,17 +477,19 @@ void loop() {
 					}
 				} else if (tmpVal == 28 && TemperatureInF) {
 					TemperatureInF = false;
+					EEPROM.update(3, 0);
+
 					if (SerialEnabled) {
 						Serial.print("BSI - Current Temperature Type: Celcius");
 						Serial.println();
 					}
 				}
-				
+
 				CAN1.sendMessage( & canMsgRcv);
 			} else if (id == 608 && len == 8) { // CAN2004
 				// Do not forward original message, it has been completely redesigned on CAN2010
 				// Also forge missing messages from CAN2004
-				
+
 				// Language / Units / Settings
 				canMsgSnd.data[0] = languageNum;
 
@@ -460,7 +514,7 @@ void loop() {
 				canMsgSnd.can_id = 0x260;
 				canMsgSnd.can_dlc = 7;
 				CAN1.sendMessage( & canMsgSnd);
-				
+
 				// Economy mode simulation
 				if (EconomyMode && EconomyModeEnabled) {
 					canMsgSnd.data[0] = 0x14; // 0x14
@@ -474,7 +528,7 @@ void loop() {
 				canMsgSnd.can_id = 0x236;
 				canMsgSnd.can_dlc = 1;
 				CAN1.sendMessage( & canMsgSnd);
-				
+
 				// Current Time
 				// If time is synced
 				if (timeStatus() != timeNotSet) {
@@ -497,7 +551,7 @@ void loop() {
 				canMsgSnd.can_id = 0x276;
 				canMsgSnd.can_dlc = 7;
 				CAN1.sendMessage( & canMsgSnd);
-				
+
 				if (!EngineRunning) {
 					AirConditioningON = false;
 					FanSpeed = 0x41;
@@ -558,6 +612,9 @@ void loop() {
 
 				setTime(TelematicTime_hour, TelematicTime_minute, 0, TelematicTime_day, TelematicTime_month, TelematicTime_year);
 				RTC.set(now()); // Set the time on the RTC module too
+				EEPROM.update(5, TelematicTime_day);
+				EEPROM.update(6, TelematicTime_month);
+				EEPROM.put(7, TelematicTime_year);
 
 				// Set hour on CAN-BUS Clock
 				canMsgSnd.data[0] = hour();
@@ -586,6 +643,7 @@ void loop() {
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 				if (tmpVal >= 128) {
 					languageNum = tmpVal;
+					EEPROM.update(0, languageNum);
 
 					if (SerialEnabled) {
 						Serial.print("Telematic - Change Language (Number): ");
@@ -596,19 +654,26 @@ void loop() {
 					tmpVal = (canMsgRcv.data[1] & 0xFF);
 					if (tmpVal >= 128) {
 						mpgMi = true;
+						EEPROM.update(4, 1);
+
 						tmpVal = tmpVal - 128;
 					} else {
 						mpgMi = false;
+						EEPROM.update(4, 0);
 					}
 
 					if (tmpVal >= 64) {
 						TemperatureInF = true;
+						EEPROM.update(3, 1);
+
 						if (SerialEnabled) {
 							Serial.print("Telematic - Change Temperature Type: Fahrenheit");
 							Serial.println();
 						}
 					} else if (tmpVal >= 0) {
 						TemperatureInF = false;
+						EEPROM.update(3, 0);
+
 						if (SerialEnabled) {
 							Serial.print("Telematic - Change Temperature Type: Celcius");
 							Serial.println();
@@ -617,6 +682,7 @@ void loop() {
 				} else {
 					tmpVal = ceil(tmpVal / 4.0);
 					languageID = tmpVal;
+					// EEPROM.update(2, languageID); // Too many EEPROM write cycles lost due to multiple changes at startup, disabled
 
 					// CAN2004 Head-up panel is only one-way talking, we can't change the language on it from the CAN2010 Telematic :-(
 
