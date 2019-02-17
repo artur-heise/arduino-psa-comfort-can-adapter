@@ -7,5 +7,7 @@ http://www.forum-peugeot.com/Forum/threads/tuto-adaptateur-pour-smeg-nac-en-seco
 ### Real life examples
 > ![NAC on RCZ](https://i.imgur.com/Nb3CrUN.jpg)
   NAC (Connected NAV) on RCZ (T75)
-> ![COLOR MATRIX on RCZ](https://i.imgur.com/R3jRk8K.jpg)
-  Color 2010 Matrix on RCZ (T75)
+> ![COLOR MATRIX on RCZ](https://i.imgur.com/W286thE.jpg)
+  Color 2010 Matrix on RCZ (T75) from Peugeot 2008
+> ![NAC on C4](https://i.imgur.com/Fjc8PhI.jpg)
+  NAC (Connected NAV) on C4 first model (2004)
