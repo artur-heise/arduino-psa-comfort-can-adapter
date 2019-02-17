@@ -37,15 +37,15 @@ bool EconomyModeEnabled = true; // You can disable economy mode on the Telematic
 bool TemperatureInF = false; // Default temperature in Celcius
 bool mpgMi = false;
 bool fixedBrightness = false; // Force Brightness value in case the calibration does not match your brightness value range
-bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
+bool noFMUX = true; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
 byte languageNum = 128; // (0x80) FR - If you need EN as default : 132 (0x84)
 byte languageID = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
 byte languageID_HeadupPanel = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
-byte TelematicTime_day = 1; // Default day if the RTC module is not configured
-byte TelematicTime_month = 1; // Default month if the RTC module is not configured
-int TelematicTime_year = 2019; // Default year if the RTC module is not configured
-byte TelematicTime_hour = 0; // Default hour if the RTC module is not configured
-byte TelematicTime_minute = 0; // Default minute if the RTC module is not configured
+byte Time_day = 1; // Default day if the RTC module is not configured
+byte Time_month = 1; // Default month if the RTC module is not configured
+int Time_year = 2019; // Default year if the RTC module is not configured
+byte Time_hour = 0; // Default hour if the RTC module is not configured
+byte Time_minute = 0; // Default minute if the RTC module is not configured
 
 // Default variables
 bool SerialEnabled = false;
@@ -106,17 +106,17 @@ void setup() {
 
 	tmpVal = EEPROM.read(5);
 	if (tmpVal <= 31) {
-		TelematicTime_day = tmpVal;
+		Time_day = tmpVal;
 	}
 
 	tmpVal = EEPROM.read(6);
 	if (tmpVal <= 12) {
-		TelematicTime_month = tmpVal;
+		Time_month = tmpVal;
 	}
 
 	EEPROM.get(7, tmpVal); // int
 	if (tmpVal >= 1872 && tmpVal <= 2127) {
-		TelematicTime_year = tmpVal;
+		Time_year = tmpVal;
 	}
 
 	if (SerialEnabled) {
@@ -125,6 +125,15 @@ void setup() {
 
 		// CAN-BUS from car
 		Serial.println("Initialization CAN0");
+
+		int myVal = 14;
+		byte payload[2];
+		payload[0] = highByte(myVal);
+		payload[1] = lowByte(myVal);
+		Serial.println(payload[0]);
+		Serial.println(payload[1]);
+
+		//Serial.println((1 << 8) + 88);
 	}
 
 	CAN0.reset();
@@ -134,7 +143,7 @@ void setup() {
 	}
 
 	if (SerialEnabled) {
-		// CAN-BUS to CAN2010 Telematic
+		// CAN-BUS to CAN2010 device(s)
 		Serial.println("Initialization CAN1");
 	}
 
@@ -151,10 +160,10 @@ void setup() {
 		}
 
 		// Set default time (01/01/2019 00:00)
-		setTime(TelematicTime_hour, TelematicTime_minute, 0, TelematicTime_day, TelematicTime_month, TelematicTime_year);
-		EEPROM.update(5, TelematicTime_day);
-		EEPROM.update(6, TelematicTime_month);
-		EEPROM.put(7, TelematicTime_year);
+		setTime(Time_hour, Time_minute, 0, Time_day, Time_month, Time_year);
+		EEPROM.update(5, Time_day);
+		EEPROM.update(6, Time_month);
+		EEPROM.put(7, Time_year);
 	} else if (SerialEnabled) {
 		Serial.println("RTC has set the system time");
 	}
@@ -211,7 +220,7 @@ void loop() {
 
 			CAN1.sendMessage( & canMsgRcv);
 		} else if (!debugCAN1) {
-			if (id == 54 && len == 8) { // Economy Mode detection, there are probably other ways to detect it but this is a match for both CAN2004 & CAN2010
+			if (id == 54 && len == 8) { // Economy Mode detection
 				tmpVal = (canMsgRcv.data[2] & 0xFF);
 				if (tmpVal >= 128) {
 					if (!EconomyMode && SerialEnabled) {
@@ -235,7 +244,7 @@ void loop() {
 				}
 				CAN1.sendMessage( & canMsgRcv);
 			} else if (id == 182 && len == 8) {
-				if (canMsgRcv.data[0] > 0x00 || canMsgRcv.data[1] > 0x00) { // Seems to be engine RPM, 0x00 0x00 when the engine is OFF
+				if (canMsgRcv.data[0] > 0x00 || canMsgRcv.data[1] > 0x00) { // Engine RPM, 0x00 0x00 when the engine is OFF
 					EngineRunning = true;
 				} else {
 					EngineRunning = false;
@@ -435,6 +444,27 @@ void loop() {
 				}
 
 				CAN1.sendMessage( & canMsgRcv);
+			} else if (id == 935 && len == 8) { // Maintenance
+				canMsgSnd.data[0] = 0x40;
+				canMsgSnd.data[1] = canMsgRcv.data[5]; // Value x255 +
+				canMsgSnd.data[2] = canMsgRcv.data[6]; // Value x1 = Number of days till maintenance (FF FF if disabled)
+				canMsgSnd.data[3] = canMsgRcv.data[3]; // Value x5120 +
+				canMsgSnd.data[4] = canMsgRcv.data[4]; // Value x20 = km left till maintenance
+				canMsgSnd.can_id = 0x3E7; // New maintenance frame ID
+				canMsgSnd.can_dlc = 5;
+				CAN1.sendMessage( & canMsgSnd);
+			} else if (id == 424 && len == 8) { // Cruise control
+				canMsgSnd.data[0] = canMsgRcv.data[1];
+				canMsgSnd.data[1] = canMsgRcv.data[2];
+				canMsgSnd.data[2] = canMsgRcv.data[0];
+				canMsgSnd.data[3] = 0x80;
+				canMsgSnd.data[4] = 0x14;
+				canMsgSnd.data[5] = 0x7F;
+				canMsgSnd.data[6] = 0xFF;
+				canMsgSnd.data[7] = 0x98;
+				canMsgSnd.can_id = 0x228; // New cruise control frame ID
+				canMsgSnd.can_dlc = 8;
+				CAN1.sendMessage( & canMsgSnd);
 			} else if (id == 727 && len == 5) { // Headup Panel / Matrix CAN2004
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 
@@ -514,6 +544,7 @@ void loop() {
 				canMsgSnd.can_id = 0x260;
 				canMsgSnd.can_dlc = 7;
 				CAN1.sendMessage( & canMsgSnd);
+				CAN0.sendMessage( & canMsgSnd);
 
 				// Economy mode simulation
 				if (EconomyMode && EconomyModeEnabled) {
@@ -528,6 +559,7 @@ void loop() {
 				canMsgSnd.can_id = 0x236;
 				canMsgSnd.can_dlc = 1;
 				CAN1.sendMessage( & canMsgSnd);
+				CAN0.sendMessage( & canMsgSnd);
 
 				// Current Time
 				// If time is synced
@@ -540,11 +572,11 @@ void loop() {
 					canMsgSnd.data[5] = 0x3F;
 					canMsgSnd.data[6] = 0xFE;
 				} else {
-					canMsgSnd.data[0] = (TelematicTime_year - 1872); // Year would not fit inside one byte (0 > 255), substract 1872 and you get this new range (1872 > 2127)
-					canMsgSnd.data[1] = TelematicTime_month;
-					canMsgSnd.data[2] = TelematicTime_day;
-					canMsgSnd.data[3] = TelematicTime_hour;
-					canMsgSnd.data[4] = TelematicTime_minute;
+					canMsgSnd.data[0] = (Time_year - 1872); // Year would not fit inside one byte (0 > 255), substract 1872 and you get this new range (1872 > 2127)
+					canMsgSnd.data[1] = Time_month;
+					canMsgSnd.data[2] = Time_day;
+					canMsgSnd.data[3] = Time_hour;
+					canMsgSnd.data[4] = Time_minute;
 					canMsgSnd.data[5] = 0x3F;
 					canMsgSnd.data[6] = 0xFE;
 				}
@@ -579,7 +611,7 @@ void loop() {
 		}
 	}
 
-	// Forward messages from the CAN2010 Telematic to the car
+	// Forward messages from the CAN2010 device(s) to the car
 	if (CAN1.readMessage( & canMsgRcv) == MCP2515::ERROR_OK) {
 		int id = canMsgRcv.can_id;
 		int len = canMsgRcv.can_dlc;
@@ -604,17 +636,17 @@ void loop() {
 			CAN0.sendMessage( & canMsgRcv);
 		} else if (!debugCAN0) {
 			if (id == 923 && len == 5) {
-				TelematicTime_year = (canMsgRcv.data[0] & 0xFF) + 1872; // Year would not fit inside one byte (0 > 255), add 1872 and you get this new range (1872 > 2127)
-				TelematicTime_month = (canMsgRcv.data[1] & 0xFF);
-				TelematicTime_day = (canMsgRcv.data[2] & 0xFF);
-				TelematicTime_hour = (canMsgRcv.data[3] & 0xFF);
-				TelematicTime_minute = (canMsgRcv.data[4] & 0xFF);
+				Time_year = (canMsgRcv.data[0] & 0xFF) + 1872; // Year would not fit inside one byte (0 > 255), add 1872 and you get this new range (1872 > 2127)
+				Time_month = (canMsgRcv.data[1] & 0xFF);
+				Time_day = (canMsgRcv.data[2] & 0xFF);
+				Time_hour = (canMsgRcv.data[3] & 0xFF);
+				Time_minute = (canMsgRcv.data[4] & 0xFF);
 
-				setTime(TelematicTime_hour, TelematicTime_minute, 0, TelematicTime_day, TelematicTime_month, TelematicTime_year);
+				setTime(Time_hour, Time_minute, 0, Time_day, Time_month, Time_year);
 				RTC.set(now()); // Set the time on the RTC module too
-				EEPROM.update(5, TelematicTime_day);
-				EEPROM.update(6, TelematicTime_month);
-				EEPROM.put(7, TelematicTime_year);
+				EEPROM.update(5, Time_day);
+				EEPROM.update(6, Time_month);
+				EEPROM.put(7, Time_year);
 
 				// Set hour on CAN-BUS Clock
 				canMsgSnd.data[0] = hour();
@@ -681,8 +713,10 @@ void loop() {
 					}
 				} else {
 					tmpVal = ceil(tmpVal / 4.0);
+					if ((canMsgRcv.data[1] & 0xFF) >= 128) {
+						tmpVal--;
+					}
 					languageID = tmpVal;
-					// EEPROM.update(2, languageID); // Too many EEPROM write cycles lost due to multiple changes at startup, disabled
 
 					// CAN2004 Head-up panel is only one-way talking, we can't change the language on it from the CAN2010 Telematic :-(
 
