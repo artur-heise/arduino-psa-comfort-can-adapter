@@ -40,7 +40,6 @@ bool fixedBrightness = false; // Force Brightness value in case the calibration 
 bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
 byte languageNum = 128; // (0x80) FR - If you need EN as default : 132 (0x84)
 byte languageID = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
-byte languageID_HeadupPanel = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
 byte Time_day = 1; // Default day if the RTC module is not configured
 byte Time_month = 1; // Default month if the RTC module is not configured
 int Time_year = 2019; // Default year if the RTC module is not configured
@@ -48,10 +47,12 @@ byte Time_hour = 0; // Default hour if the RTC module is not configured
 byte Time_minute = 0; // Default minute if the RTC module is not configured
 
 // Default variables
+bool Ignition = false;
 bool SerialEnabled = false;
 int temperature = 0;
 bool EconomyMode = false;
 bool EngineRunning = false;
+byte languageID_HeadupPanel = 0;
 bool AirConditioningON = false;
 byte FanSpeed = 0;
 bool FanOff = false;
@@ -432,6 +433,21 @@ void loop() {
 				canMsgSnd.can_dlc = 8;
 				CAN1.sendMessage( & canMsgSnd);
 			} else if (id == 246 && len == 8) {
+				tmpVal = (canMsgRcv.data[0] & 0xFF);
+				if (tmpVal > 128) {
+					if (!Ignition && SerialEnabled) {
+						Serial.println("Ignition ON");
+					}
+
+					Ignition = true;
+				} else {
+					if (Ignition && SerialEnabled) {
+						Serial.println("Ignition OFF");
+					}
+
+					Ignition = false;
+				}
+
 				tmpVal = ceil((canMsgRcv.data[5] & 0xFF) / 2.0) - 40; // Temperatures can be negative but we only have 0 > 255, the new range is starting from -40°C
 				if (temperature != tmpVal) {
 					temperature = tmpVal;
@@ -452,6 +468,21 @@ void loop() {
 				canMsgSnd.data[4] = canMsgRcv.data[4]; // Value x20 = km left till maintenance
 				canMsgSnd.can_id = 0x3E7; // New maintenance frame ID
 				canMsgSnd.can_dlc = 5;
+				
+				if (SerialEnabled) {
+					Serial.print("Next maintenance in: ");
+					if (canMsgRcv.data[5] != 0xFF && canMsgRcv.data[6] != 0xFF) {
+						tmpVal = ((canMsgRcv.data[5] & 0xFF) * 255) + (canMsgRcv.data[6] & 0xFF);
+						Serial.print(tmpVal);
+						Serial.println(" days");
+					}
+					if (canMsgRcv.data[3] != 0xFF && canMsgRcv.data[4] != 0xFF) {
+						tmpVal = ((canMsgRcv.data[5] & 0xFF) * 5120) + ((canMsgRcv.data[6] & 0xFF) * 20);
+						Serial.print(tmpVal);
+						Serial.println(" km");
+					}
+				}
+				
 				CAN1.sendMessage( & canMsgSnd);
 			} else if (id == 424 && len == 8) { // Cruise control
 				canMsgSnd.data[0] = canMsgRcv.data[1];
@@ -544,22 +575,34 @@ void loop() {
 				canMsgSnd.can_id = 0x260;
 				canMsgSnd.can_dlc = 7;
 				CAN1.sendMessage( & canMsgSnd);
-				CAN0.sendMessage( & canMsgSnd);
 
 				// Economy mode simulation
 				if (EconomyMode && EconomyModeEnabled) {
-					canMsgSnd.data[0] = 0x14; // 0x14
+					canMsgSnd.data[0] = 0x14;
+					if (Ignition) {
+						canMsgSnd.data[5] = 0x0E;
+					} else {
+						canMsgSnd.data[5] = 0x0C;
+					}
 				} else {
 					if (EngineRunning) {
 						canMsgSnd.data[0] = 0x54;
 					} else {
 						canMsgSnd.data[0] = 0x04;
 					}
+					canMsgSnd.data[5] = 0x0F;
 				}
+				canMsgSnd.data[1] = 0x03;
+				canMsgSnd.data[2] = 0xDE;
+
+				canMsgSnd.data[3] = 0x00; // Increasing value,
+				canMsgSnd.data[4] = 0x00; // counter ?
+
+				canMsgSnd.data[6] = 0xFE;
+				canMsgSnd.data[7] = 0x00;
 				canMsgSnd.can_id = 0x236;
-				canMsgSnd.can_dlc = 1;
+				canMsgSnd.can_dlc = 8;
 				CAN1.sendMessage( & canMsgSnd);
-				CAN0.sendMessage( & canMsgSnd);
 
 				// Current Time
 				// If time is synced
