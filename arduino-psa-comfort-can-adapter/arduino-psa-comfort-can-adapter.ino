@@ -34,7 +34,8 @@ bool debugGeneral = false; // Get some debug informations on Serial
 bool debugCAN0 = false; // Read data sent by ECUs from the car to Entertainment CAN bus using https://github.com/alexandreblin/python-can-monitor
 bool debugCAN1 = false; // Read data sent by the NAC / SMEG to Entertainment CAN bus using https://github.com/alexandreblin/python-can-monitor
 bool EconomyModeEnabled = true; // You can disable economy mode on the Telematic if you want to - Not recommended at all
-bool TemperatureInF = false; // Default temperature in Celcius
+bool Send_CAN2010_ForgedMessages = false; // Send forged CAN2010 messages to the CAR CAN-BUS Network (useful for testing CAN2010 device(s) from already existent connectors)
+bool TemperatureInF = false; // Default Temperature in Celcius
 bool mpgMi = false;
 bool fixedBrightness = false; // Force Brightness value in case the calibration does not match your brightness value range
 bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
@@ -49,7 +50,7 @@ byte Time_minute = 0; // Default minute if the RTC module is not configured
 // Default variables
 bool Ignition = false;
 bool SerialEnabled = false;
-int temperature = 0;
+int Temperature = 0;
 bool EconomyMode = false;
 bool EngineRunning = false;
 byte languageID_HeadupPanel = 0;
@@ -67,6 +68,7 @@ bool WindShieldAerator = false;
 bool CentralAerator = false;
 bool AutoFan = false;
 byte FanPosition = 0;
+bool MaintenanceDisplayed = false;
 
 // CAN-BUS Messages
 struct can_frame canMsgSnd;
@@ -281,6 +283,9 @@ void loop() {
 				canMsgSnd.can_id = 0x122;
 				canMsgSnd.can_dlc = 8;
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 			} else if (id == 464 && len == 7 && EngineRunning) { // No fan activated if the engine is not ON on old models
 				LeftTemp = (canMsgRcv.data[5] & 0xFF);
 				RightTemp = (canMsgRcv.data[6] & 0xFF);
@@ -432,6 +437,9 @@ void loop() {
 				canMsgSnd.can_id = 0x350;
 				canMsgSnd.can_dlc = 8;
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 			} else if (id == 246 && len == 8) {
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 				if (tmpVal > 128) {
@@ -449,8 +457,8 @@ void loop() {
 				}
 
 				tmpVal = ceil((canMsgRcv.data[5] & 0xFF) / 2.0) - 40; // Temperatures can be negative but we only have 0 > 255, the new range is starting from -40°C
-				if (temperature != tmpVal) {
-					temperature = tmpVal;
+				if (Temperature != tmpVal) {
+					Temperature = tmpVal;
 
 					if (SerialEnabled) {
 						Serial.print("Ext. Temperature: ");
@@ -460,6 +468,29 @@ void loop() {
 				}
 
 				CAN1.sendMessage( & canMsgRcv);
+			} else if (id == 296 && len == 8) {
+				canMsgSnd.data[0] = canMsgRcv.data[0];
+				canMsgSnd.data[1] = canMsgRcv.data[6];
+				canMsgSnd.data[2] = canMsgRcv.data[7];
+
+				tmpVal = (canMsgRcv.data[0] & 0xFF);
+				if (tmpVal == 96) { // Handbrake
+					canMsgSnd.data[3] = 0x02;
+				} else {
+					canMsgSnd.data[3] = 0x00;
+				}
+
+				canMsgSnd.data[4] = canMsgRcv.data[4];
+				canMsgSnd.data[5] = canMsgRcv.data[5];
+				canMsgSnd.data[6] = canMsgRcv.data[6];
+				canMsgSnd.data[7] = canMsgRcv.data[7];
+				canMsgSnd.can_id = 0x128;
+				canMsgSnd.can_dlc = 8;
+
+				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) { // Will generate some light issues on the instrument panel
+					CAN0.sendMessage( & canMsgSnd);
+				}
 			} else if (id == 935 && len == 8) { // Maintenance
 				canMsgSnd.data[0] = 0x40;
 				canMsgSnd.data[1] = canMsgRcv.data[5]; // Value x255 +
@@ -468,22 +499,26 @@ void loop() {
 				canMsgSnd.data[4] = canMsgRcv.data[4]; // Value x20 = km left till maintenance
 				canMsgSnd.can_id = 0x3E7; // New maintenance frame ID
 				canMsgSnd.can_dlc = 5;
-				
-				if (SerialEnabled) {
+
+				if (SerialEnabled && !MaintenanceDisplayed) {
 					Serial.print("Next maintenance in: ");
+					if (canMsgRcv.data[3] != 0xFF && canMsgRcv.data[4] != 0xFF) {
+						tmpVal = ((canMsgRcv.data[3] & 0xFF) * 5120) + ((canMsgRcv.data[4] & 0xFF) * 20);
+						Serial.print(tmpVal);
+						Serial.println(" km");
+					}
 					if (canMsgRcv.data[5] != 0xFF && canMsgRcv.data[6] != 0xFF) {
 						tmpVal = ((canMsgRcv.data[5] & 0xFF) * 255) + (canMsgRcv.data[6] & 0xFF);
 						Serial.print(tmpVal);
 						Serial.println(" days");
 					}
-					if (canMsgRcv.data[3] != 0xFF && canMsgRcv.data[4] != 0xFF) {
-						tmpVal = ((canMsgRcv.data[5] & 0xFF) * 5120) + ((canMsgRcv.data[6] & 0xFF) * 20);
-						Serial.print(tmpVal);
-						Serial.println(" km");
-					}
+					MaintenanceDisplayed = true;
 				}
-				
+
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 			} else if (id == 424 && len == 8) { // Cruise control
 				canMsgSnd.data[0] = canMsgRcv.data[1];
 				canMsgSnd.data[1] = canMsgRcv.data[2];
@@ -496,6 +531,9 @@ void loop() {
 				canMsgSnd.can_id = 0x228; // New cruise control frame ID
 				canMsgSnd.can_dlc = 8;
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 			} else if (id == 727 && len == 5) { // Headup Panel / Matrix CAN2004
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 
@@ -513,41 +551,7 @@ void loop() {
 						Serial.println();
 					}
 				}
-			} else if (id == 608 && len == 7) { // CAN2010
-				tmpVal = (canMsgRcv.data[0] & 0xFF);
-
-				if (languageNum != tmpVal) {
-					languageNum = tmpVal;
-					EEPROM.update(0, languageNum);
-
-					if (SerialEnabled) {
-						Serial.print("BSI - Current Language: ");
-						Serial.print(tmpVal);
-						Serial.println();
-					}
-				}
-
-				tmpVal = (canMsgRcv.data[1] & 0xFF);
-				if (tmpVal == 92 && !TemperatureInF) {
-					TemperatureInF = true;
-					EEPROM.update(3, 1);
-
-					if (SerialEnabled) {
-						Serial.print("BSI - Current Temperature Type: Fahrenheit");
-						Serial.println();
-					}
-				} else if (tmpVal == 28 && TemperatureInF) {
-					TemperatureInF = false;
-					EEPROM.update(3, 0);
-
-					if (SerialEnabled) {
-						Serial.print("BSI - Current Temperature Type: Celcius");
-						Serial.println();
-					}
-				}
-
-				CAN1.sendMessage( & canMsgRcv);
-			} else if (id == 608 && len == 8) { // CAN2004
+			} else if (id == 608 && len == 8) {
 				// Do not forward original message, it has been completely redesigned on CAN2010
 				// Also forge missing messages from CAN2004
 
@@ -575,6 +579,9 @@ void loop() {
 				canMsgSnd.can_id = 0x260;
 				canMsgSnd.can_dlc = 7;
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 
 				// Economy mode simulation
 				if (EconomyMode && EconomyModeEnabled) {
@@ -603,6 +610,9 @@ void loop() {
 				canMsgSnd.can_id = 0x236;
 				canMsgSnd.can_dlc = 8;
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 
 				// Current Time
 				// If time is synced
@@ -626,6 +636,9 @@ void loop() {
 				canMsgSnd.can_id = 0x276;
 				canMsgSnd.can_dlc = 7;
 				CAN1.sendMessage( & canMsgSnd);
+				if (Send_CAN2010_ForgedMessages) {
+					CAN0.sendMessage( & canMsgSnd);
+				}
 
 				if (!EngineRunning) {
 					AirConditioningON = false;
@@ -645,6 +658,9 @@ void loop() {
 					canMsgSnd.can_id = 0x350;
 					canMsgSnd.can_dlc = 8;
 					CAN1.sendMessage( & canMsgSnd);
+					if (Send_CAN2010_ForgedMessages) {
+						CAN0.sendMessage( & canMsgSnd);
+					}
 				}
 			} else {
 				CAN1.sendMessage( & canMsgRcv);
