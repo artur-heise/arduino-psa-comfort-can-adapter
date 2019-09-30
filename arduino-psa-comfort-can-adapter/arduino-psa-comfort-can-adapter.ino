@@ -520,6 +520,8 @@ void loop() {
 					CAN0.sendMessage( & canMsgSnd);
 				}
 			} else if (id == 424 && len == 8) { // Cruise control
+				CAN1.sendMessage( & canMsgRcv);
+
 				canMsgSnd.data[0] = canMsgRcv.data[1];
 				canMsgSnd.data[1] = canMsgRcv.data[2];
 				canMsgSnd.data[2] = canMsgRcv.data[0];
