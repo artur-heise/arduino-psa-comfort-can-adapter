@@ -37,13 +37,13 @@ bool EconomyModeEnabled = true; // You can disable economy mode on the Telematic
 bool Send_CAN2010_ForgedMessages = false; // Send forged CAN2010 messages to the CAR CAN-BUS Network (useful for testing CAN2010 device(s) from already existent connectors)
 bool TemperatureInF = false; // Default Temperature in Celcius
 bool mpgMi = false;
+bool kmL = false; // km/L statistics instead of L/100
 bool fixedBrightness = false; // Force Brightness value in case the calibration does not match your brightness value range
-bool noFMUX = false; // If you don't have any useful button on the main facade, turn the SRC button on steering wheel commands into MENU
-byte languageNum = 128; // (0x80) FR - If you need EN as default : 132 (0x84)
-byte languageID = 0; // FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
+bool noFMUX = false; // If you don't have any useful button on the main panel, turn the SRC button on steering wheel commands into MENU
+byte languageID = 0; // Default is FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
 byte Time_day = 1; // Default day if the RTC module is not configured
 byte Time_month = 1; // Default month if the RTC module is not configured
-int Time_year = 2019; // Default year if the RTC module is not configured
+int Time_year = 2020; // Default year if the RTC module is not configured
 byte Time_hour = 0; // Default hour if the RTC module is not configured
 byte Time_minute = 0; // Default minute if the RTC module is not configured
 
@@ -71,6 +71,12 @@ byte FanPosition = 0;
 bool MaintenanceDisplayed = false;
 byte carType = 0;
 
+// Language & Unit CAN2010 value
+byte languageAndUnitNum = (languageID * 4) + 128;
+if (kmL) {
+	languageAndUnitNum = languageAndUnitNum + 1;
+}
+
 // CAN-BUS Messages
 struct can_frame canMsgSnd;
 struct can_frame canMsgRcv;
@@ -84,8 +90,11 @@ void setup() {
 
 	// Read data from EEPROM
 	tmpVal = EEPROM.read(0);
-	if (tmpVal >= 128 && (tmpVal % 2) == 0) {
-		languageNum = tmpVal;
+	if (tmpVal >= 128) {
+		languageAndUnitNum = tmpVal;
+		if ((languageAndUnitNum % 2) == 0 && kmL) {
+			languageAndUnitNum = languageAndUnitNum + 1;
+		}
 	}
 
 	tmpVal = EEPROM.read(1);
@@ -596,9 +605,12 @@ void loop() {
 					languageID_HeadupPanel = tmpVal;
 					EEPROM.update(1, languageID_HeadupPanel);
 
-					// Change language on ID 608 for CAN2010 Telematic language change
-					languageNum = (languageID_HeadupPanel * 4) + 128;
-					EEPROM.update(0, languageNum);
+					// Change language and unit on ID 608 for CAN2010 Telematic language change
+					languageAndUnitNum = (languageID_HeadupPanel * 4) + 128;
+					if (kmL) {
+						languageAndUnitNum = languageAndUnitNum + 1;
+					}
+					EEPROM.update(0, languageAndUnitNum);
 
 					if (SerialEnabled) {
 						Serial.print("Headup Panel - Change Language: ");
@@ -611,7 +623,7 @@ void loop() {
 				// Also forge missing messages from CAN2004
 
 				// Language / Units / Settings
-				canMsgSnd.data[0] = languageNum;
+				canMsgSnd.data[0] = languageAndUnitNum;
 
 				if (TemperatureInF) {
 					canMsgSnd.data[1] = 0x5C;
@@ -788,11 +800,11 @@ void loop() {
 			} else if (id == 347 && len == 8) {
 				tmpVal = (canMsgRcv.data[0] & 0xFF);
 				if (tmpVal >= 128) {
-					languageNum = tmpVal;
-					EEPROM.update(0, languageNum);
+					languageAndUnitNum = tmpVal;
+					EEPROM.update(0, languageAndUnitNum);
 
 					if (SerialEnabled) {
-						Serial.print("Telematic - Change Language (Number): ");
+						Serial.print("Telematic - Change Language and Unit (Number): ");
 						Serial.print(tmpVal);
 						Serial.println();
 					}
