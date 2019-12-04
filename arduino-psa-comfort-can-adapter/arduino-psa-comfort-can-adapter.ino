@@ -73,9 +73,6 @@ byte carType = 0;
 
 // Language & Unit CAN2010 value
 byte languageAndUnitNum = (languageID * 4) + 128;
-if (kmL) {
-	languageAndUnitNum = languageAndUnitNum + 1;
-}
 
 // CAN-BUS Messages
 struct can_frame canMsgSnd;
@@ -92,9 +89,10 @@ void setup() {
 	tmpVal = EEPROM.read(0);
 	if (tmpVal >= 128) {
 		languageAndUnitNum = tmpVal;
-		if ((languageAndUnitNum % 2) == 0 && kmL) {
-			languageAndUnitNum = languageAndUnitNum + 1;
-		}
+	}
+
+	if ((languageAndUnitNum % 2) == 0 && kmL) {
+		languageAndUnitNum = languageAndUnitNum + 1;
 	}
 
 	tmpVal = EEPROM.read(1);
