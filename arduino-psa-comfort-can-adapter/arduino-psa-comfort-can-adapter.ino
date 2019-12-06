@@ -17,6 +17,7 @@ const int CS_PIN_CAN0 = 10;
 const int CS_PIN_CAN1 = 9;
 const long SERIAL_SPEED = 115200;
 const byte CAN_SPEED = CAN_125KBPS; // Entertainment CAN bus - Low speed
+const byte CAN_FREQ = MCP_16MHZ; // Switch to 8MHZ if you have a 8Mhz module
 
 ////////////////////
 // Initialization //
@@ -39,13 +40,14 @@ bool TemperatureInF = false; // Default Temperature in Celcius
 bool mpgMi = false;
 bool kmL = false; // km/L statistics instead of L/100
 bool fixedBrightness = false; // Force Brightness value in case the calibration does not match your brightness value range
-bool noFMUX = false; // If you don't have any useful button on the main panel, turn the SRC button on steering wheel commands into MENU
+bool noFMUX = false; // If you don't have any useful button on the main panel, turn the SRC button on steering wheel commands into MENU - only works for CAN2010 SMEG / NAC -
 byte languageID = 0; // Default is FR: 0 - EN: 1 / DE: 2 / ES: 3 / IT: 4 / PT: 5 / NL: 6 / BR: 9 / TR: 12
 byte Time_day = 1; // Default day if the RTC module is not configured
 byte Time_month = 1; // Default month if the RTC module is not configured
 int Time_year = 2020; // Default year if the RTC module is not configured
 byte Time_hour = 0; // Default hour if the RTC module is not configured
 byte Time_minute = 0; // Default minute if the RTC module is not configured
+bool resetEEPROM = false; // Switch to true to reset all EEPROM values
 
 // Default variables
 bool Ignition = false;
@@ -80,6 +82,17 @@ struct can_frame canMsgRcv;
 
 void setup() {
   int tmpVal;
+
+  if (resetEEPROM) {
+    EEPROM.update(0, 0);
+    EEPROM.update(1, 0);
+    EEPROM.update(2, 0);
+    EEPROM.update(3, 0);
+    EEPROM.update(4, 0);
+    EEPROM.update(5, 0);
+    EEPROM.update(6, 0);
+    EEPROM.update(7, 0);
+  }
 
   if (debugCAN0 || debugCAN1 || debugGeneral) {
     SerialEnabled = true;
@@ -139,7 +152,7 @@ void setup() {
   }
 
   CAN0.reset();
-  CAN0.setBitrate(CAN_SPEED);
+  CAN0.setBitrate(CAN_SPEED, CAN_FREQ);
   while (CAN0.setNormalMode() != MCP2515::ERROR_OK) {
     delay(100);
   }
@@ -150,7 +163,7 @@ void setup() {
   }
 
   CAN1.reset();
-  CAN1.setBitrate(CAN_SPEED);
+  CAN1.setBitrate(CAN_SPEED, CAN_FREQ);
   while (CAN1.setNormalMode() != MCP2515::ERROR_OK) {
     delay(100);
   }
@@ -161,7 +174,7 @@ void setup() {
       Serial.println("Unable to sync with the RTC");
     }
 
-    // Set default time (01/01/2019 00:00)
+    // Set default time (01/01/2020 00:00)
     setTime(Time_hour, Time_minute, 0, Time_day, Time_month, Time_year);
     EEPROM.update(5, Time_day);
     EEPROM.update(6, Time_month);
